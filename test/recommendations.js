@@ -36,7 +36,7 @@ describe('Recommendations API', function() {
         expect(Array.isArray(cachedResponse.body.recommendations)).to.be.true;
       });
 
-      it('has lenght of 3', function() {
+      it('has length of 3', function() {
         expect(cachedResponse.body.recommendations).to.have.length.of(3);
       });
     });

@@ -2,7 +2,7 @@
 
 ## Overview
 
-FreshPotatoes.com is a wiki-based website for films and artists.  
+FreshPotatoes.com is a wiki-based website for films and artists.
 
 The FreshPotatoes team has defined a RESTful API endpoint they want you to build. The endpoint will allow external partners, like Netflix, to access FreshPotato artist and film data.
 
@@ -150,7 +150,7 @@ The database schema is also provided via entity-relationship diagram. To interac
 
 #### Third-Party API
 
-The FreshPotatoes database has been developed using film data from a third-party service where fans can write reviews about their favorite movies.  
+The FreshPotatoes database has been developed using film data from a third-party service where fans can write reviews about their favorite movies.
 
 As part of this project, you must use this API to access film review data.  The third-party API is documented [here](third-party-api.md).
 
