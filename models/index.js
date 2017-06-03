@@ -1,5 +1,4 @@
 const path = require('path');
-const sqlite = require('sqlite');
 const Sequelize = require('sequelize');
 
 const { DB_PATH=path.join(__dirname, '../db/database.db') } = process.env;

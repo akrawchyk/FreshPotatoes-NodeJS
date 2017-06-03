@@ -1,22 +1,54 @@
 const express = require('express');
 const models = require('../models');
-const router = express.Router();
 const axios = require('axios');
 const moment = require('moment');
+
 const REVIEWS_API_URL = 'http://credentials-api.generalassemb.ly';
 const REVIEWS_API_PATHNAME = '/4576f55f-c427-4cfc-a11c-5bfe914ca6c1';
-const MIN_AVG_REVIEW_FOR_RECOMMENDATION = 4.0
-const MIN_REVIEWS_FOR_RECOMMENDATION = 5
-const YEARS_BEFORE_FOR_RECOMMENDATION = 15
-const YEARS_AFTER_FOR_RECOMMENDATION = 15
+const MIN_AVG_RATING_FOR_RECOMMENDATION = 4.0;
+const MIN_REVIEWS_FOR_RECOMMENDATION = 5;
+const YEARS_BEFORE_FOR_RECOMMENDATION = 15;
+const YEARS_AFTER_FOR_RECOMMENDATION = 15;
 
+const router = express.Router();
 const request = axios.create({
   baseURL: REVIEWS_API_URL
 });
 
+/**
+ * Coerces query params we care about to numbers
+ * @param {Object} query - express query params
+ */
+function parseQuery(query) {
+  const ret = Object.assign({}, query);  // clone
+
+  if (ret.offset) {
+    ret.offset = parseInt(ret.offset, 10);
+  }
+
+  if (ret.limit) {
+    ret.limit = parseInt(ret.limit, 10);
+  }
+
+  return ret;
+}
+
+/**
+ * Takes a film review and outputs the average rating of all of its reviews
+ * @param {Object} filmReview - film review object from 3rd party API
+ */
+function computeAverageRating(filmReview) {
+  const total = filmReview.reviews.reduce((sum, cur) => sum + cur.rating, 0);
+  const average = parseFloat(total / filmReview.reviews.length); return average.toPrecision(3);
+}
+
+/**
+ * Queries 3rd party API for film review data
+ * @param {string|number|array} filmIds - a single film id, an array of film ids, or a csv string of film ids.
+ */
 function getReviewsForFilms(filmIds) {
   if (typeof filmIds !== 'string' && typeof filmIds !== 'number' && !Array.isArray(filmIds)) {
-    throw new Error('Expected filmIds to be either String, Number, or Array');
+    throw new Error('Expected filmIds to be either string, number, or Array');
   }
 
   return request.get(REVIEWS_API_PATHNAME, {
@@ -27,49 +59,30 @@ function getReviewsForFilms(filmIds) {
     .then(res => res.data);
 }
 
-/* example response:
-{
-  "recommendations" : [
-    {
-      "id": 109,
-      "title": "Reservoir Dogs",
-      "releaseDate": "09-02-1992",
-      "genre": "Action",
-      "averageRating": 4.2,
-      "reviews": 202
-    },
-    {
-      "id": 102,
-      "title": "Jackie Brown",
-      "releaseDate": "09-15-1997",
-      "genre": "Action",
-      "averageRating": 4.1,
-      "reviews": 404
-    },
-    {
-      "id": 85,
-      "title": "True Romance",
-      "releaseDate": "09-25-1993",
-      "genre": "Action",
-      "averageRating": 4.0,
-      "reviews": 165098
-    }
-  ],
-  "meta": {
-    "limit": 10,
-    "offset": 0
-  }
-}
-*/
-
 router.get('/:id/recommendations', getFilmRecommendations);
 
-function getFilmRecommendations(req, res) {
-  const filmId = req.params.id;
+function getFilmRecommendations(req, res, next) {
+  const filmId = parseInt(req.params.id, 10);
   const meta = Object.assign({
     offset: 0,
     limit: 10
-  }, req.query);
+  }, parseQuery(req.query));
+
+  // check the request input
+  if (isNaN(filmId)) {
+    res.status(422).json({ message: `Unexpected id ${req.params.id}, is not a number.` });
+    return next();
+  }
+
+  if (isNaN(meta.offset)) {
+    res.status(422).json({ message: `Unexpected offset ${req.query.offset}, is not a number.` });
+    return next();
+  }
+
+  if (isNaN(meta.limit)) {
+    res.status(422).json({ message: `Unexpected limit ${req.query.limit}, is not a number.` });
+    return next();
+  }
 
   models.Film.findById(filmId)
     .then(film => {
@@ -80,33 +93,57 @@ function getFilmRecommendations(req, res) {
             id: {
               $ne: film.id
             },
-            genre_id: film.genre_id,
-          },
-          order: [ 'id' ]
+            genre_id: film.genre_id
+          }
         })
-          .then(candidates => candidates.filter(c => {
-            // filter out release date -15 and +15 years
-            const start = moment(film.releaseDate).subtract(YEARS_BEFORE_FOR_RECOMMENDATION, 'years');
-            const end = moment(film.releaseDate).add(YEARS_AFTER_FOR_RECOMMENDATION, 'years');
-            return moment(c.releaseDate).isBetween(start, end, 'year');
-          }))
-          .then(candidates => {
-            // get list of reviews for all candidates
-            const candidateIds = candidates.map(c => c.id);
+          .then(genreFilms => {
+            const candidateRecommendations = genreFilms.filter(gf => {
+              // filter out release date -15 and +15 years
+              const start = moment(film.releaseDate).subtract(YEARS_BEFORE_FOR_RECOMMENDATION, 'years');
+              const end = moment(film.releaseDate).add(YEARS_AFTER_FOR_RECOMMENDATION, 'years');
+              return moment(gf.releaseDate).isBetween(start, end, 'year');
+            });
+
+            // get list of reviews for all candidateRecommendations
+            const candidateIds = candidateRecommendations.map(c => c.id);
             return getReviewsForFilms(candidateIds)
-              .then(reviews => {
-                return reviews
-                  // remove less than 5 reviews
-                  .filter(r => r.reviews.length >= MIN_REVIEWS_FOR_RECOMMENDATION )
-                  // remove cumulative <= 4.0
-                  .filter(r => {
-                    const total = r.reviews.reduce((sum, cur) => sum + cur.rating, 0);
-                    return (total / r.reviews.length) > MIN_AVG_REVIEW_FOR_RECOMMENDATION;
-                  })
-              })
+              .then(filmReviews => filmReviews
+                // remove films with < 5 reviews
+                .filter(fr => fr.reviews.length >= MIN_REVIEWS_FOR_RECOMMENDATION)
+                // remove films with cumulative rating <= 4.0
+                .filter(fr => computeAverageRating(fr) > MIN_AVG_RATING_FOR_RECOMMENDATION));
           })
+          .then(filmReviews => {
+            // populate reviews with data from films
+            const filmIds = filmReviews.map(fr => fr.film_id);
+            return models.Film.findAll({
+              where: {
+                id: {
+                  in: filmIds
+                }
+              },
+              include: [models.Genre],
+              limit: meta.limit,
+              offset: meta.offset
+            })
+              .then(films => films.map(f => {
+                const filmReview = filmReviews.filter(fr => fr.film_id === f.id)[0];
+
+                return {
+                  // film properties
+                  id: f.id,
+                  title: f.title,
+                  releaseDate: f.releaseDate,
+                  genre: f.genre.name,
+                  // review properties
+                  averageRating: computeAverageRating(filmReview),
+                  reviews: filmReview.reviews.length
+                };
+              }));
+          });
       } else {
-        res.status(404).json({ message: `Film with id ${filmId} not found.` });
+        res.status(422).json({ message: `Film with id ${filmId} not found.` });
+        return next();
       }
     })
     .then(recommendations => res.json({
