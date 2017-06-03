@@ -16,6 +16,7 @@ const request = axios.create({
 /**
  * Coerces query params we care about to numbers
  * @param {Object} query - express query params
+ * @returns {Object}
  */
 function parseQuery(query) {
   const ret = Object.assign({}, query);  // clone
@@ -34,6 +35,7 @@ function parseQuery(query) {
 /**
  * Takes a film review and outputs the average rating of all of its reviews
  * @param {Object} filmReview - film review object from 3rd party API
+ * @returns {number}
  */
 function computeAverageRating(filmReview) {
   const total = filmReview.reviews.reduce((sum, cur) => sum + cur.rating, 0);
@@ -43,6 +45,7 @@ function computeAverageRating(filmReview) {
 
 /**
  * @param {Film}
+ * @returns {Promise}
  */
 function getRecommendableFilmReviews(film, limit, offset) {
   // get films with same genre, without the requested film
@@ -69,12 +72,13 @@ function getRecommendableFilmReviews(film, limit, offset) {
           // remove films with < 5 reviews
           .filter(fr => fr.reviews.length >= RECOMMENDATION_MIN_REVIEWS)
           // remove films with cumulative rating <= 4.0
-          .filter(fr => computeAverageRating(fr) > RECOMMENDATION_MIN_AVG_RATING ));
+          .filter(fr => computeAverageRating(fr) > RECOMMENDATION_MIN_AVG_RATING));
     });
 }
 
 /**
  * @param {Array[Object]} filmReviews - array of film review objects from 3rd party API
+ * @returns {Promise}
  */
 function makeFilmRecommendations(filmReviews, limit, offset) {
   // match films with reviews
@@ -107,6 +111,7 @@ function makeFilmRecommendations(filmReviews, limit, offset) {
 /**
  * Queries 3rd party API for film review data
  * @param {string|number|array} filmIds - a single film id, an array of film ids, or a csv string of film ids.
+ * @returns {Promise}
  */
 function getReviewsForFilms(filmIds) {
   if (typeof filmIds !== 'string' && typeof filmIds !== 'number' && !Array.isArray(filmIds)) {
@@ -123,20 +128,17 @@ function getReviewsForFilms(filmIds) {
 
 /**
  * @param {number|string} filmId
+ * @returns {Promise}
  */
-function getRecommendableFilms(filmId, options) {
-  return models.Film.findById(filmId)
-    .then(film => {
-      if (film) {
-        return getRecommendableFilmReviews(film)
-          .then(filmReviews => makeFilmRecommendations(filmReviews, options.limit, options.offset));
-      } else {
-        res.status(422).json({ message: `Film with id ${filmId} not found.` });
-        return next();
-      }
-    });
+function getRecommendableFilms(film, options) {
+  return getRecommendableFilmReviews(film)
+    .then(filmReviews => makeFilmRecommendations(filmReviews, options.limit, options.offset));
 }
 
+/**
+ * Route handler
+ * @returns {Promise}
+ */
 function getFilmRecommendations(req, res, next) {
   const filmId = parseInt(req.params.id, 10);
   const meta = Object.assign({
@@ -160,11 +162,19 @@ function getFilmRecommendations(req, res, next) {
     return next();
   }
 
-  return getRecommendableFilms(filmId, meta)
-    .then(recommendations => res.json({
-      recommendations,
-      meta
-    }))
+  return models.Film.findById(filmId)
+    .then(film => {
+      if (film) {
+        return getRecommendableFilms(film, meta)
+          .then(recommendations => res.json({
+            recommendations,
+            meta
+          }))
+      } else {
+        res.status(404).json({ message: `Film with id ${filmId} not found.` });
+        return next();
+      }
+    })
     .catch(err => {
       if (err.response) {
         // error is from 3rd party API call
