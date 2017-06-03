@@ -1,7 +1,9 @@
-const express = require('express');
-const models = require('../models');
 const axios = require('axios');
-const moment = require('moment'); const REVIEWS_API_URL = 'http://credentials-api.generalassemb.ly';
+const express = require('express');
+const moment = require('moment');
+const models = require('../models');
+
+const REVIEWS_API_URL = 'http://credentials-api.generalassemb.ly';
 const REVIEWS_API_PATHNAME = '/4576f55f-c427-4cfc-a11c-5bfe914ca6c1';
 const RECOMMENDATION_MIN_AVG_RATING = 4.0;
 const RECOMMENDATION_MIN_REVIEWS = 5;
@@ -40,14 +42,18 @@ function parseQuery(query) {
 function computeAverageRating(filmReview) {
   const total = filmReview.reviews.reduce((sum, cur) => sum + cur.rating, 0);
   const average = parseFloat(total / filmReview.reviews.length);
-  return parseFloat(average.toPrecision(3), 10);
+  return parseFloat(average.toPrecision(3));
 }
 
 /**
- * @param {Film}
- * @returns {Promise}
+ * Finds films in our db with the same genre as the film for recommending,
+ * and filters out extraneous films based on release date, and get films reviews
+ * for the resulting list of films. Filters out the film reviews based on number
+ * of reviews and cumulative rating.
+ * @param {Film} - film model to find for recommendations for
+ * @returns {Promise} - resolves {Array} of film reviews from 3rd party API
  */
-function getRecommendableFilmReviews(film, limit, offset) {
+function getRecommendableFilmReviews(film) {
   // get films with same genre, without the requested film
   return models.Film.findAll({
     where: {
@@ -77,8 +83,12 @@ function getRecommendableFilmReviews(film, limit, offset) {
 }
 
 /**
+ * Matches recommendable films with their reviews and populates an object with
+ * relevant film recommendation data.
  * @param {Array[Object]} filmReviews - array of film review objects from 3rd party API
- * @returns {Promise}
+ * @param {number} [limit] - limit the amount of films to recommend
+ * @param {number} [offset] - offset the start of returned recommendations
+ * @returns {Promise} - resolves {Array} of film recommendations
  */
 function makeFilmRecommendations(filmReviews, limit, offset) {
   // match films with reviews
@@ -90,7 +100,8 @@ function makeFilmRecommendations(filmReviews, limit, offset) {
       }
     },
     include: [models.Genre],
-    limit, offset
+    limit,
+    offset
   })
     .then(films => films.map(f => {
       const filmReview = filmReviews.filter(fr => fr.film_id === f.id)[0];
@@ -111,7 +122,7 @@ function makeFilmRecommendations(filmReviews, limit, offset) {
 /**
  * Queries 3rd party API for film review data
  * @param {string|number|array} filmIds - a single film id, an array of film ids, or a csv string of film ids.
- * @returns {Promise}
+ * @returns {Promise} - resolves {Array} of film reviews from 3rd party API
  */
 function getReviewsForFilms(filmIds) {
   if (typeof filmIds !== 'string' && typeof filmIds !== 'number' && !Array.isArray(filmIds)) {
@@ -128,15 +139,20 @@ function getReviewsForFilms(filmIds) {
 
 /**
  * @param {number|string} filmId
- * @returns {Promise}
+ * @param {Object.limit} [options] - limit the amount of returned recommendations
+ * @param {Object.offset} [options] - offset the start of returned recommendations
+ * @returns {Promise} - resolves {Array} of film recommendations
  */
-function getRecommendableFilms(film, options) {
+function getRecommendableFilms(film, options={}) {
   return getRecommendableFilmReviews(film)
     .then(filmReviews => makeFilmRecommendations(filmReviews, options.limit, options.offset));
 }
 
 /**
  * Route handler
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {function} next - Express next handler
  * @returns {Promise}
  */
 function getFilmRecommendations(req, res, next) {
@@ -169,11 +185,11 @@ function getFilmRecommendations(req, res, next) {
           .then(recommendations => res.json({
             recommendations,
             meta
-          }))
-      } else {
-        res.status(404).json({ message: `Film with id ${filmId} not found.` });
-        return next();
+          }));
       }
+
+      res.status(404).json({ message: `Film with id ${filmId} not found.` });
+      return next();
     })
     .catch(err => {
       if (err.response) {
