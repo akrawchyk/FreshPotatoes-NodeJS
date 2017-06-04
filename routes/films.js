@@ -1,4 +1,5 @@
 const axios = require('axios');
+const cors = require('cors');
 const express = require('express');
 const moment = require('moment');
 const models = require('../models');
@@ -189,7 +190,6 @@ function getFilmRecommendations(req, res, next) {
       }
 
       res.status(404).json({ message: `Film with id ${filmId} not found.` });
-      return next();
     })
     .catch(err => {
       if (err.response) {
@@ -202,6 +202,6 @@ function getFilmRecommendations(req, res, next) {
     });
 }
 
-router.get('/:id/recommendations', getFilmRecommendations);
+router.get('/:id/recommendations', cors(), getFilmRecommendations);
 
 module.exports = router;

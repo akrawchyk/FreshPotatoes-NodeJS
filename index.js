@@ -6,6 +6,7 @@ const { PORT=3000, NODE_ENV='development' } = process.env;
 
 const app = express();
 app.use('/films', films);
+app.use(express.static('build'));
 app.get('*', missingRouteHandler);
 
 models.sequelize.sync()
