@@ -202,6 +202,34 @@ function getFilmRecommendations(req, res, next) {
     });
 }
 
+function getFilms(req, res, next) {
+  const meta = Object.assign({
+    offset: 0,
+    limit: 10
+  }, parseQuery(req.query));
+
+  return models.Film.findAll({
+    include: [models.Genre],
+    offset: meta.offset,
+    limit: meta.limit
+  })
+    .then(films => {
+      if (films) {
+        return res.json({
+          films,
+          meta
+        });
+      }
+
+      res.status(404).json({ message: `Films not found.` });
+    })
+    .catch(err => {
+      // something else went wrong
+      res.status(500).json({ message: err.message });
+    });
+}
+
+router.get('/', cors(), getFilms);
 router.get('/:id/recommendations', cors(), getFilmRecommendations);
 
 module.exports = router;

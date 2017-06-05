@@ -4,7 +4,7 @@ import Film from './Film';
 function FilmList(props) {
   let list = null;
 
-  if (props.films) {
+  if (props.films.length) {
     list = (
       <ul className="FilmList-films">
         {props.films.map(film => {
