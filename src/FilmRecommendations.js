@@ -6,7 +6,7 @@ import FilmList from './FilmList';
 const API_URL = 'http://localhost:3000';
 
 function getFilmRecommendations(options={}) {
-  return axios.get('/films/7264/recommendations', {
+  return axios.get(`/films/${options.filmId}/recommendations`, {
     baseURL: API_URL
   })
     .then(res => {
@@ -20,13 +20,22 @@ class FilmRecommendations extends Component {
     super(props);
 
     this.state = {
+      filmId: '',
       filmRecommendations: []
     };
+
+    this.handleChangeFilmId = this.handleChangeFilmId.bind(this);
+  }
+
+  handleChangeFilmId(event) {
+    this.setState({
+      filmId: event.target.value
+    });
   }
 
   componentDidMount() {
-    if (this.props.filmId) {
-      getFilmRecommendations()
+    if (this.state.filmId) {
+      getFilmRecommendations({ filmId: this.state.filmId })
         .then(filmRecommendations => {
           this.setState({ filmRecommendations });
         });
@@ -36,7 +45,7 @@ class FilmRecommendations extends Component {
   render() {
     return (
       <div className="FilmRecommendations">
-        <FilmSelect onChange={this.props.onChange} />
+        <FilmSelect filmId={this.state.filmId} onChange={this.handleChangeFilmId} />
         <FilmList films={this.state.filmRecommendations} />
       </div>
     );

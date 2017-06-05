@@ -229,7 +229,8 @@ function getFilms(req, res, next) {
     });
 }
 
-router.get('/', cors(), getFilms);
-router.get('/:id/recommendations', cors(), getFilmRecommendations);
+router.use(cors())
+router.get('/', getFilms);
+router.get('/:id/recommendations', getFilmRecommendations);
 
 module.exports = router;
